@@ -8,6 +8,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <regex.h>
+#include <dirent.h>
 #undef main
 
 SDL_Surface* surf;
@@ -455,10 +456,18 @@ int main(int argc, char* argv[]) {
 	for(int i = 0; i < 255; i++)
 		binds[i] = 0;
 	rules = (struct rule*)malloc(sizeof(struct rule)*MAX_RULES);
-	loadRule("rules/sand.ruleset");
-	loadRule("rules/reeds.ruleset");
-	loadRule("rules/fish.ruleset");
-	loadRule("rules/rainclouds.ruleset");
+	DIR *dir;
+	struct dirent *ent;
+	if((dir = opendir("./rules"))!=NULL) {
+		while((ent=readdir(dir))!=NULL) {
+			printf("%s\n",ent->d_name);
+			char* rule_file = (char*)malloc(8+strlen(ent->d_name));
+			strcpy(rule_file, "./rules/");
+			strcat(rule_file, ent->d_name);
+			loadRule(rule_file);
+		}
+		closedir(dir);
+	}
 
 	printf("Rule match and replace types\n");
 	for(int i = 0; i < 5; i++) {
@@ -547,7 +556,7 @@ int main(int argc, char* argv[]) {
 			int ystart = HEIGHT+3 - (step/STEPPING);
 			int xstart = -4 + (step%STEPPING);
 			for(int j = ystart; j > -5; j-=STEPPING)
-				for(int i = (step%2==0?xstart:WIDTH-xstart); i < WIDTH+5 && i > -5; i+=(step%2==0?1:-1)*STEPPING)
+				for(int i = ((step%2)==0?xstart:(WIDTH-xstart)); i < WIDTH+5 && i > -5; i+=((step%2)==0?1:-1)*STEPPING)
 					for(int r = 0; r < n_rules; r++) {
 						if(rules[rule_list[r]].replace[2][3].refX == -2 && i == 1 && j == 1)
 							get(i, j);

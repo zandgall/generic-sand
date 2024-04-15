@@ -9,18 +9,21 @@
 - "animal"
 - "living"
 - "fish head"
+- "solid"
 
 #ed7979:
 - "fish"
 - "animal"
 - "living"
 - "fish body"
+- "solid"
 
 #de9090:
 - "fish"
 - "animal"
 - "living"
 - "fish tail"
+- "solid"
 
 
 h => "fish head"
