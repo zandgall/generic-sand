@@ -23,7 +23,7 @@ int relX, relY;
 #define WINDOW_SCALE 8
 #define ITERATIONS 4
 #define STEPPING 2
-#define MAX_RULES 256
+#define MAX_RULES 1024
 
 #define COL(r,g,b) ((uint32_t)(r<<16)+(uint32_t)(g<<8)+(uint32_t)(b)+(uint32_t)(255	<<24))
 
@@ -232,7 +232,7 @@ void loadRule(const char* filepath) {
 								break;
 							}
 						if (term == NULL)
-							printf("%s%s - Couldn't create rule: Unknown symbol '%c', line #%d%s", c_red, filepath, rule_str[regmatch[1].rm_so + offset], line_number, c_def);
+							printf("%s%s - Couldn't create rule: Unknown symbol '%c', line #%d%s\n", c_red, filepath, rule_str[regmatch[1].rm_so + offset], line_number, c_def);
 					} else {
 						needToFree = 1;
 						term = reggrab(rule_str + offset, regmatch[1]);
@@ -264,6 +264,8 @@ void loadRule(const char* filepath) {
 							break;
 						}
 					} else { // In replace block
+						if(term == NULL)
+							printf("%s%s - Couldn't create rule: Failed to collect term in response, line #%d%s\n", c_red, filepath, line_number, c_def);
 						regmatch_t value[6];
 						if(term[0] == '*')
 							rule.replace[i][j-5].type = -1;
