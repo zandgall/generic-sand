@@ -333,7 +333,7 @@ void loadRule(const char* filepath) {
 			regmatch_t chance_grab[2];
 			if(regexec(&chance, line, 2, chance_grab, 0) == 0) {
 				char* num_string = reggrab(line, chance_grab[1]);
-				rule.chance = strtof(num_string, NULL) / 100.f;
+				rule.chance = 10.f * strtof(num_string, NULL) / 100.f;
 				free(num_string);
 			}
 			rules[n_rules] = rule;
