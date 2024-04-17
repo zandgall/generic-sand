@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <regex.h>
 #include <dirent.h>
+#include <string.h>
 #undef main
 
 SDL_Surface* surf;
@@ -23,7 +24,7 @@ int relX, relY;
 #define WINDOW_SCALE 8
 #define ITERATIONS 4
 #define STEPPING 2
-#define MAX_RULES 1024
+#define MAX_RULES 256
 
 #define COL(r,g,b) ((uint32_t)(r<<16)+(uint32_t)(g<<8)+(uint32_t)(b)+(uint32_t)(255	<<24))
 
@@ -43,6 +44,23 @@ struct match_t {
 	char* identity;
 };
 
+bool matchCmp(const struct match_t a, const struct match_t b) {
+	if(a.type!=b.type)
+		return false;
+	if(a.type==-1)
+		return true;
+	if(a.type==0)
+		return a.value == b.value;
+	if(a.type==1 && a.identity != NULL && b.identity != NULL)
+		return strcmp(a.identity, b.identity)==0;
+	return false; // unknown type!
+}
+
+struct region {
+	uint32_t* unique_members;	
+	uint32_t num_unique_members;
+} *quadrants, *quad_quadrants;
+
 struct replace_t {
 	int8_t type;
 	int8_t refX, refY;
@@ -59,6 +77,9 @@ struct replace_t {
 struct rule {
 	// match_t is a type that will be used to determine whether a color matches a rule or not
 	struct match_t match[5][5];
+	// the "search_for" contains all unique match_t's, to see if a region has all the elements used in the match block
+	struct match_t* search_for;
+	int num_search_for;
 	// replace_t is a type that will be used to determine how each cell confined by the rule should be changed
 	struct replace_t replace[5][5];
 	
@@ -107,8 +128,58 @@ bool isIdentity(const char* identity_name, uint32_t element) {
 	
 }
 
+bool regionHas(struct region r, struct match_t t) {
+	if(t.type==-1)
+		return true;
+	if(t.type==0) {
+		for(int i = 0; i < r.num_unique_members; i++)
+			if(t.value==r.unique_members[i])
+				return true;
+	} else
+		for(int i = 0; i < r.num_unique_members; i++)
+			if(isIdentity(t.identity, r.unique_members[i]))
+				return true;
+	return false;
+}
+
+bool potential(struct rule rule, int x, int y) {
+	if(x >= WIDTH || x + 5 < 0 || y >= HEIGHT || y + 5 < 0)
+		return false;
+	if(y >= 0) {
+		if(x >= 0) {
+			struct region tl = quadrants[(2*x / WIDTH) + 2*(2*y/HEIGHT)];
+			for(int i = 0; i < rule.num_search_for; i++)
+				if(!regionHas(tl, rule.search_for[i]))
+					return false;
+		}
+		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH) {
+			struct region tr = quadrants[((2*x+10) / WIDTH) + 2*(2*y/HEIGHT)];
+			for(int i = 0; i < rule.num_search_for; i++)
+				if(!regionHas(tr, rule.search_for[i]))
+					return false;
+		}
+	}
+	if(y + 5 < HEIGHT && (2*y+10)/HEIGHT != (2*y)/HEIGHT) {
+		if(x >= 0) {
+			struct region bl = quadrants[(2*x / WIDTH) + 2*((2*y+10)/HEIGHT)];
+			for(int i = 0; i < rule.num_search_for; i++)
+				if(!regionHas(bl, rule.search_for[i]))
+					return false;
+		}
+		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH) {
+			struct region br = quadrants[((2*x+10) / WIDTH) + 2*((2*y+10)/HEIGHT)];
+			for(int i = 0; i < rule.num_search_for; i++)
+				if(!regionHas(br, rule.search_for[i]))
+					return false;
+		}
+	}
+	return true;
+}
+
 bool matches(struct rule rule, int x, int y) {
 	if((double)rand()/RAND_MAX > rule.chance)
+		return false;
+	if(!potential(rule, x, y))
 		return false;
 	for(int j = 0; j < 5; j++)
 		for(int i = 0; i < 5; i++) {
@@ -165,6 +236,20 @@ char* reggrab(const char* string, regmatch_t match) {
 	return out;
 }
 
+bool isUIntMemberOf(uint32_t val, uint32_t* list, uint32_t max) {
+	for(int i = 0; i < max; i++)
+		if(list[i]==val)
+			return true;
+	return false;
+}
+
+bool isMatchMemberOf(struct match_t val, struct match_t* list, uint32_t max) {
+	for(int i = 0; i < max; i++)
+		if(matchCmp(list[i],val))
+			return true;
+	return false;
+}
+
 void loadRule(const char* filepath) {
 	FILE *f = fopen(filepath, "r");
 		
@@ -203,7 +288,9 @@ void loadRule(const char* filepath) {
 			continue;
 		if((ret=strncmp(line, "rule:", 5))==0) {
 			int rule_line_number = line_number;
+			struct match_t* unique_members = (struct match_t*)malloc(sizeof(struct match_t)*5*5);
 			struct rule rule;
+			rule.num_search_for = 0;
 			rule.chance = 1;
 			for(int i = 0; i < 5; i++) {
 				line_number++;
@@ -263,6 +350,8 @@ void loadRule(const char* filepath) {
 							j = 10;
 							break;
 						}
+						if(!isMatchMemberOf(rule.match[i][j], unique_members, rule.num_search_for))
+							unique_members[rule.num_search_for++]=rule.match[i][j];
 					} else { // In replace block
 						if(term == NULL)
 							printf("%s%s - Couldn't create rule: Failed to collect term in response, line #%d%s\n", c_red, filepath, line_number, c_def);
@@ -332,6 +421,11 @@ void loadRule(const char* filepath) {
 				}
 			}
 			
+			rule.search_for = (struct match_t*)malloc(sizeof(struct match_t)*rule.num_search_for);
+			for(int i = 0; i<rule.num_search_for; i++)
+				rule.search_for[i] = unique_members[i];
+			free(unique_members);
+
 			regmatch_t chance_grab[2];
 			if(regexec(&chance, line, 2, chance_grab, 0) == 0) {
 				char* num_string = reggrab(line, chance_grab[1]);
@@ -439,6 +533,21 @@ void loadRule(const char* filepath) {
 	fclose(f);
 }
 
+void updateRegion(struct region* region, int x, int y, int width, int height) {
+	region->num_unique_members = 0;
+	for(int i = x, col = 0; i < x + width; i++)
+		for(int j = y, col = get(i,j); j < y + height; j++, col = get(i,j))
+			if(!isUIntMemberOf(col, region->unique_members, region->num_unique_members))
+				region->unique_members[region->num_unique_members++] = col;
+}
+
+void updateRegions() {
+	updateRegion(&quadrants[0], 0, 			0, 			WIDTH / 2, HEIGHT / 2);
+	updateRegion(&quadrants[1], WIDTH / 2, 	0, 			WIDTH / 2, HEIGHT / 2);
+	updateRegion(&quadrants[2], 0, 			HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
+	updateRegion(&quadrants[3], WIDTH / 2, 	HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
+}
+
 int main(int argc, char* argv[]) {
 	srand(time(NULL));
 	// Just double checking that (uint32_t)-1 == 0xffffffff, which it is
@@ -450,6 +559,15 @@ int main(int argc, char* argv[]) {
 		return 1;
 	window_surface = SDL_GetWindowSurface(w);
 	surf = SDL_CreateRGBSurface(0, WIDTH, HEIGHT, 32, 0, 0, 0, 0);
+
+	// Set up quadrants and quadquadrants
+	quadrants = (struct region*)malloc(sizeof(struct region)*4);
+	for(int i = 0; i < 4; i++) {
+		quadrants[i].num_unique_members = 1;
+		quadrants[i].unique_members = (uint32_t*)malloc(sizeof(uint32_t)*(WIDTH/2)*(HEIGHT/2));
+		quadrants[i].unique_members[0] = AIR; // We always start with AIR everywhere
+	}
+
 	
 	// Setup identities
 	identities = (struct identity*)malloc(sizeof(struct identity)*1);
@@ -575,6 +693,8 @@ int main(int argc, char* argv[]) {
 			if(step>=STEPPING*STEPPING)
 				step = 0;
 		}
+
+		updateRegions();
 		
 		SDL_BlitScaled(surf, NULL, window_surface, NULL);
 		SDL_UpdateWindowSurface(w);
