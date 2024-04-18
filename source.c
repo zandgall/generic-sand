@@ -22,7 +22,7 @@ int relX, relY;
 #define WIDTH 80
 #define HEIGHT 80
 #define WINDOW_SCALE 8
-#define ITERATIONS 4
+#define ITERATIONS 2
 #define STEPPING 2
 #define MAX_RULES 256
 
@@ -41,7 +41,7 @@ struct match_t {
 	// -1 - match anything, 0 - exact color, 1 - identity
 	int8_t type;
 	uint32_t value;
-	char* identity;
+	// char* identity;
 };
 
 bool matchCmp(const struct match_t a, const struct match_t b) {
@@ -49,11 +49,7 @@ bool matchCmp(const struct match_t a, const struct match_t b) {
 		return false;
 	if(a.type==-1)
 		return true;
-	if(a.type==0)
-		return a.value == b.value;
-	if(a.type==1 && a.identity != NULL && b.identity != NULL)
-		return strcmp(a.identity, b.identity)==0;
-	return false; // unknown type!
+	return a.value == b.value;
 }
 
 struct region {
@@ -65,7 +61,7 @@ struct replace_t {
 	int8_t type;
 	int8_t refX, refY;
 	uint32_t value;
-	const char* identity;
+	// const char* identity;
 	// type = -1 -> do not replace
 	// type = 0 -> replace with color value of 'value'
 	// type = 1 -> replace with color of the pixel that is (refX, refY) away from the current position. if a referenced cell is out of bounds, it will return AIR
@@ -104,21 +100,22 @@ uint32_t get(int x, int y) {
 	return *((uint32_t*)(surf->pixels + y * surf->pitch + x * surf->format->BytesPerPixel));
 }
 
-struct identity* getIdentity(const char* identity_name) {
-	if(identity_name == NULL)
-		return NULL;
-	for(int i = 0; i < n_identities; i++)
-		if(identities[i].name != NULL && strcmp(identities[i].name, identity_name)==0)
-			return &identities[i];
-	return NULL;
-}
+// struct identity* getIdentity(const char* identity_name) {
+// 	if(identity_name == NULL)
+// 		return NULL;
+// 	for(int i = 0; i < n_identities; i++)
+// 		if(identities[i].name != NULL && strcmp(identities[i].name, identity_name)==0)
+// 			return &identities[i];
+// 	return NULL;
+// }
 
-bool isIdentity(const char* identity_name, uint32_t element) {
+bool isIdentity(const uint32_t identity_index, uint32_t element) {
 	if(identity_name == NULL)
 		return false;
-	struct identity* id = getIdentity(identity_name);
-	if(id==NULL)
+	// struct identity* id = getIdentity(identity_name);
+	if(identity_index >= n_identities)
 		return false;
+	struct identity* id = identities + identity_index;
 	
 	for(int i = 0; i < id->member_count; i++)
 		if(element == id->members[i])
@@ -128,16 +125,18 @@ bool isIdentity(const char* identity_name, uint32_t element) {
 	
 }
 
-bool regionHas(struct region r, struct match_t t) {
+bool regionHas(struct region *r, struct match_t t) {
+	if(r == NULL)
+		return false;
 	if(t.type==-1)
 		return true;
 	if(t.type==0) {
-		for(int i = 0; i < r.num_unique_members; i++)
-			if(t.value==r.unique_members[i])
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(t.value==r->unique_members[i])
 				return true;
 	} else
-		for(int i = 0; i < r.num_unique_members; i++)
-			if(isIdentity(t.identity, r.unique_members[i]))
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(isIdentity(t.value, r->unique_members[i]))
 				return true;
 	return false;
 }
@@ -145,34 +144,24 @@ bool regionHas(struct region r, struct match_t t) {
 bool potential(struct rule rule, int x, int y) {
 	if(x >= WIDTH || x + 5 < 0 || y >= HEIGHT || y + 5 < 0)
 		return false;
+
+	struct region *tl = NULL, *tr = NULL, *bl = NULL, *br = NULL;
 	if(y >= 0) {
-		if(x >= 0) {
-			struct region tl = quadrants[(2*x / WIDTH) + 2*(2*y/HEIGHT)];
-			for(int i = 0; i < rule.num_search_for; i++)
-				if(!regionHas(tl, rule.search_for[i]))
-					return false;
-		}
-		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH) {
-			struct region tr = quadrants[((2*x+10) / WIDTH) + 2*(2*y/HEIGHT)];
-			for(int i = 0; i < rule.num_search_for; i++)
-				if(!regionHas(tr, rule.search_for[i]))
-					return false;
-		}
+		if(x >= 0)
+			tl = &quadrants[(2*x / WIDTH) + 2*(2*y/HEIGHT)];
+		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH)
+			tr = &quadrants[((2*x+10) / WIDTH) + 2*(2*y/HEIGHT)];
 	}
 	if(y + 5 < HEIGHT && (2*y+10)/HEIGHT != (2*y)/HEIGHT) {
-		if(x >= 0) {
-			struct region bl = quadrants[(2*x / WIDTH) + 2*((2*y+10)/HEIGHT)];
-			for(int i = 0; i < rule.num_search_for; i++)
-				if(!regionHas(bl, rule.search_for[i]))
-					return false;
-		}
-		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH) {
-			struct region br = quadrants[((2*x+10) / WIDTH) + 2*((2*y+10)/HEIGHT)];
-			for(int i = 0; i < rule.num_search_for; i++)
-				if(!regionHas(br, rule.search_for[i]))
-					return false;
-		}
+		if(x >= 0)
+			bl = &quadrants[(2*x / WIDTH) + 2*((2*y+10)/HEIGHT)];
+		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH)
+			br = &quadrants[((2*x+10) / WIDTH) + 2*((2*y+10)/HEIGHT)];
 	}
+	for(int i = 0; i < rule.num_search_for; i++)
+		if(!regionHas(tl, rule.search_for[i]) && !regionHas(tr, rule.search_for[i])
+			&& !regionHas(bl, rule.search_for[i]) && !regionHas(br, rule.search_for[i]))
+			return false;
 	return true;
 }
 
@@ -189,7 +178,7 @@ bool matches(struct rule rule, int x, int y) {
 				return false;
 			if(rule.match[j][i].type==0 && rule.match[j][i].value != get(i+x, j+y))
 				return false;
-			if(rule.match[j][i].type==1 && !isIdentity(rule.match[j][i].identity, get(i+x, j+y)))
+			if(rule.match[j][i].type==1 && !isIdentity(rule.match[j][i].value, get(i+x, j+y)))
 				return false;
 		}
 	return true;
@@ -212,7 +201,7 @@ void enforce(struct rule rule, int x, int y) {
 								+ (source[j][i]&0xff)+(int8_t)(rule.replace[j][i].value&0xff)
 								+ (source[j][i]&0xff000000);
 			if(rule.replace[j][i].type == 3) {
-				struct identity* id = getIdentity(rule.replace[j][i].identity);
+				struct identity* id = identities + rule.replace[j][i].value;
 				if(id == NULL)
 					source[j][i] = get(i + x, j + y);
 				else
