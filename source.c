@@ -22,7 +22,7 @@ int relX, relY;
 #define WIDTH 80
 #define HEIGHT 80
 #define WINDOW_SCALE 8
-#define ITERATIONS 2
+#define ITERATIONS 4
 #define STEPPING 2
 #define MAX_RULES 256
 
@@ -100,23 +100,19 @@ uint32_t get(int x, int y) {
 	return *((uint32_t*)(surf->pixels + y * surf->pitch + x * surf->format->BytesPerPixel));
 }
 
-// struct identity* getIdentity(const char* identity_name) {
-// 	if(identity_name == NULL)
-// 		return NULL;
-// 	for(int i = 0; i < n_identities; i++)
-// 		if(identities[i].name != NULL && strcmp(identities[i].name, identity_name)==0)
-// 			return &identities[i];
-// 	return NULL;
-// }
+int getIdentity(const char* identity_name) {
+	if(identity_name == NULL)
+		return -1;
+	for(int i = 0; i < n_identities; i++)
+		if(identities[i].name != NULL && strcmp(identities[i].name, identity_name)==0)
+			return i;
+	return -1;
+}
 
 bool isIdentity(const uint32_t identity_index, uint32_t element) {
-	if(identity_name == NULL)
-		return false;
-	// struct identity* id = getIdentity(identity_name);
-	if(identity_index >= n_identities)
+	if(identity_index < 0 || identity_index >= n_identities)
 		return false;
 	struct identity* id = identities + identity_index;
-	
 	for(int i = 0; i < id->member_count; i++)
 		if(element == id->members[i])
 			return true;
@@ -141,28 +137,108 @@ bool regionHas(struct region *r, struct match_t t) {
 	return false;
 }
 
+bool quadrantHas(int x, int y, struct match_t t) {
+	if(x < 0 || x >= 2 || y < 0 || y >= 2)
+		return false;
+	if(t.type == -1)
+		return true;
+	struct region *r = quadrants + x + y*2;
+	if(t.type==0) {
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(t.value==r->unique_members[i])
+				return true;
+	} else
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(isIdentity(t.value, r->unique_members[i]))
+				return true;
+	return false;
+}
+
+bool quadquadrantHas(int x, int y, struct match_t t) {
+	if(x < 0 || x >= 4 || y < 0 || y >= 4)
+		return false;
+	if(t.type == -1)
+		return true;
+	struct region *r = quad_quadrants + x + y*4;
+	if(t.type==0) {
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(t.value==r->unique_members[i])
+				return true;
+	} else
+		for(int i = 0; i < r->num_unique_members; i++)
+			if(isIdentity(t.value, r->unique_members[i]))
+				return true;
+	return false;
+}
+
 bool potential(struct rule rule, int x, int y) {
 	if(x >= WIDTH || x + 5 < 0 || y >= HEIGHT || y + 5 < 0)
 		return false;
 
-	struct region *tl = NULL, *tr = NULL, *bl = NULL, *br = NULL;
+	/*struct region *tl = NULL, *tr = NULL, *bl = NULL, *br = NULL;
+	struct region *qtl = NULL, *qtr = NULL, *qbl = NULL, *qbr = NULL;
 	if(y >= 0) {
-		if(x >= 0)
-			tl = &quadrants[(2*x / WIDTH) + 2*(2*y/HEIGHT)];
-		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH)
-			tr = &quadrants[((2*x+10) / WIDTH) + 2*(2*y/HEIGHT)];
+		if(x >= 0) {
+			tl = quadrants + (2*x / WIDTH) + 2*(2*y/HEIGHT);
+			qtl = quad_quadrants + (4*x / WIDTH) + 4(4*y / HEIGHT);
+		}
+		if(x + 5 < WIDTH) {
+			if(floor((2.f*x+10)/WIDTH) != floor((2.f*x)/WIDTH)) {
+				tr = quadrants + (2*x+10) / WIDTH + 2*(2*y/HEIGHT);
+				qtr = quad_quadrants + (4*x+20) / WIDTH + 4(4*y / HEIGHT);
+			} else if (floor((4.f*x+20)/WIDTH) != floor((4.f*x)/WIDTH))
+				qtr = quad_quadrants + (4*x+20) / WIDTH + 4(4*y / HEIGHT);
+		}
 	}
-	if(y + 5 < HEIGHT && (2*y+10)/HEIGHT != (2*y)/HEIGHT) {
+	if(y + 5 < HEIGHT && floor((2.f*y+10)/HEIGHT) != floor((2.f*y)/HEIGHT)) {
 		if(x >= 0)
 			bl = &quadrants[(2*x / WIDTH) + 2*((2*y+10)/HEIGHT)];
-		if(x + 5 < WIDTH && (2*x+10)/WIDTH != (2*x)/WIDTH)
+		if(x + 5 < WIDTH && floor((2.f*x+10)/WIDTH) != floor((2.f*x)/WIDTH))
 			br = &quadrants[((2*x+10) / WIDTH) + 2*((2*y+10)/HEIGHT)];
 	}
 	for(int i = 0; i < rule.num_search_for; i++)
 		if(!regionHas(tl, rule.search_for[i]) && !regionHas(tr, rule.search_for[i])
 			&& !regionHas(bl, rule.search_for[i]) && !regionHas(br, rule.search_for[i]))
 			return false;
+	return true;*/
+
+	int ql = floor((2.f*x)/WIDTH), qt = floor((2.f*y)/HEIGHT), 
+		qr = floor((2.f*x+10)/WIDTH), qb=floor((2.f*y+10)/HEIGHT);
+
+	int qql = floor((4.f*x)/WIDTH), qqt = floor((4.f*y)/HEIGHT), 
+		qqr = floor((4.f*x+20)/WIDTH), qqb=floor((4.f*y+20)/HEIGHT);
+
+	for(int i = 0; i < rule.num_search_for; i++) {
+		if(ql >= 0) {
+			if(qt >= 0 && quadrantHas(ql, qt, rule.search_for[i]))
+				continue;
+			if(qb < HEIGHT && qb!=qt && quadrantHas(ql, qb, rule.search_for[i]))
+				continue;
+		}
+		if(qr < WIDTH && qr!=ql) {
+			if(qt >= 0 && quadrantHas(qr, qt, rule.search_for[i]))
+				continue;
+			if(qb < HEIGHT && qb!=qt && quadrantHas(qr, qb, rule.search_for[i]))
+				continue;
+		}
+
+		if(qql >= 0) {
+			if(qqt >= 0 && quadquadrantHas(qql, qqt, rule.search_for[i]))
+				continue;
+			if(qqb < HEIGHT && qqb!=qqt && quadrantHas(qql, qqb, rule.search_for[i]))
+				continue;
+		}
+		if(qqr < WIDTH && qqr!=qql) {
+			if(qqt >= 0 && quadrantHas(qqr, qqt, rule.search_for[i]))
+				continue;
+			if(qqb < HEIGHT && qqb!=qqt && quadrantHas(qqr, qqb, rule.search_for[i]))
+				continue;
+		}
+
+		return false;
+	}
 	return true;
+
 }
 
 bool matches(struct rule rule, int x, int y) {
@@ -246,14 +322,14 @@ void loadRule(const char* filepath) {
 	const char* c_def = "\033[0m";
 	int line_number = 0;
 	if(f==NULL) {
-		printf("%s%s - Couldn't create rule: File not found!%s", c_red, filepath, c_def);
+		printf("%s%s - Couldn't create rule: File not found!%s\n", c_red, filepath, c_def);
 		return;
 	}
 	
 	int ret = 0;
 	regex_t whitespace, term, element, element_identity, color, identity, reference, edit, color_debug, is_symbol_def, y_mirror, x_mirror, chance;
 	ret = regcomp(&whitespace, "^\\s*?$", REG_EXTENDED); // Empty line
-	ret = regcomp(&element, "^#(\\S{6}):[ \\t]*(\\S)?", REG_EXTENDED); // #element: (keybind)
+	ret = regcomp(&element, "^#(\\S{6}):\\s+(\\S)?", REG_EXTENDED); // #element: (keybind)
 	ret = regcomp(&element_identity, "\\s*-\\s*\"(.*?)\"", REG_EXTENDED);
 	ret = regcomp(&term, "\\s*?(\\(\\s*?(\\S+)\\s*?,\\s*?(\\S+)\\s*?\\)|\\(.*?,.*?,.*?,.*?,.*?\\)|#\\S+|\".*?\"|\\S)(\\s+|$)", REG_EXTENDED); // any selectable element surrounded by whitespace
 	ret = regcomp(&color, "\\s*?#(\\S\\S\\S\\S\\S\\S)(\\s+|$)", REG_EXTENDED); // exactly 6 non-whitespace characters following '#'
@@ -285,7 +361,7 @@ void loadRule(const char* filepath) {
 				line_number++;
 				char rule_str[255];
 				if(!fgets(rule_str, 255, f)) {
-					printf("%s%s - Couldn't create rule: End of file before end of rule, at line #%d%s", c_red, filepath, line_number, c_def);			
+					printf("%s%s - Couldn't create rule: End of file before end of rule, at line #%d%s\n", c_red, filepath, line_number, c_def);			
 					return;
 				}
 				for(int j = 0, offset = 0; j < 10; j++) {
@@ -296,7 +372,7 @@ void loadRule(const char* filepath) {
 						regexec(&term, rule_str + offset, 2, regmatch, 0);
 					}
 					if(regmatch[1].rm_so == -1 || (regmatch[1].rm_eo == -1 && j < 9)) {
-						printf("%s%s - Couldn't create rule: Not enough terms in rule's row #%d, line #%d%s (Need 10 terms total, 5 match + 5 replace!)", c_red, filepath, line_number-rule_line_number, line_number, c_def);
+						printf("%s%s - Couldn't create rule: Not enough terms in rule's row #%d, line #%d%s (Need 10 terms total, 5 match + 5 replace!)\n", c_red, filepath, line_number-rule_line_number, line_number, c_def);
 						return;
 					}
 					// ret = regexec(&reference, )
@@ -324,7 +400,17 @@ void loadRule(const char* filepath) {
 							rule.match[i][j].value = (uint32_t)strtol(num_string, NULL, 16) + (uint32_t)(255<<24);
 						} else if (regexec(&identity, term, 2, value, 0) == 0) {
 							rule.match[i][j].type = 1;
-							rule.match[i][j].identity = reggrab(term, value[1]);
+							char* identity_name = reggrab(term, value[1]);
+							rule.match[i][j].value = getIdentity(identity_name);
+							if(rule.match[i][j].value==-1) {
+								rule.match[i][j].value = n_identities;
+								identities = realloc(identities, sizeof(struct identity)*(n_identities+1));
+								identities[n_identities].member_count = 0;
+								identities[n_identities].members = NULL;
+								identities[n_identities].name = identity_name; // No need to strcpy 'i'
+								n_identities++;
+								// printf("%s%s - Couldn't create rule: Unknown identity \"%s\" referenced in match! Line #%d%s\n", c_red, filepath, identity_name, line_number, c_def);
+							}
 						} else {
 							if (regexec(&color_debug, term, 2, value, 0) == 0)
 								printf("%s%s - Couldn't create rule: It looks like you intended to create a color identity here, colors are are written as \"#\" followed by exactly and only 6 hex characters. Line #%d%s\n", c_red, filepath, line_number, c_def);
@@ -389,7 +475,17 @@ void loadRule(const char* filepath) {
 							rule.replace[i][j-5].value = ((uint32_t)((uint8_t)r)<<16) + ((uint32_t)((uint8_t)g)<<8) + ((uint32_t)(uint8_t)b);
 						} else if (regexec(&identity, term, 2, value, 0) == 0) {
 							rule.replace[i][j-5].type = 3;
-							rule.replace[i][j-5].identity = reggrab(term, value[1]);
+							char* identity_name = reggrab(term, value[1]);
+							rule.replace[i][j-5].value = getIdentity(identity_name);
+							if(rule.replace[i][j-5].value==-1){
+								rule.replace[i][j-5].value = n_identities;
+								identities = realloc(identities, sizeof(struct identity)*(n_identities+1));
+								identities[n_identities].member_count = 0;
+								identities[n_identities].members = NULL;
+								identities[n_identities].name = identity_name; // No need to strcpy 'i'
+								n_identities++;
+								// printf("%s%s - Couldn't create rule: Unknown identity \"%s\" referenced in replace! Line #%d%s\n", c_red, filepath, identity_name, line_number, c_def);
+							}
 						} else {
 							printf("%s%s - Couldn't create rule: Unknown replacement term syntax, match term #%d, rule row #%d, Line #%d%s\n", c_red, filepath, j, i, line_number, c_def);
 							
@@ -418,7 +514,7 @@ void loadRule(const char* filepath) {
 			regmatch_t chance_grab[2];
 			if(regexec(&chance, line, 2, chance_grab, 0) == 0) {
 				char* num_string = reggrab(line, chance_grab[1]);
-				rule.chance = 10.f * strtof(num_string, NULL) / 100.f;
+				rule.chance = strtof(num_string, NULL) / 100.f;
 				free(num_string);
 			}
 			rules[n_rules] = rule;
@@ -489,11 +585,15 @@ void loadRule(const char* filepath) {
 					if(regexec(&element_identity, element_identities, 2, grab, 0)==0) {
 						line_number++;
 						char* i = reggrab(element_identities, grab[1]);
-						struct identity *id = getIdentity(i);
-						if(id) {
-							if(isIdentity(i, element_color))
+						int identity_index = getIdentity(i);
+						if(identity_index != -1) {
+							if(isIdentity(identity_index, element_color))
 								continue;
-							id->members = realloc(id->members, sizeof(uint32_t)*id->member_count+1);
+							struct identity *id = identities + identity_index;
+							if(id->members)
+								id->members = realloc(id->members, sizeof(uint32_t)*id->member_count+1);
+							else
+								id->members = (uint32_t*)malloc(sizeof(uint32_t)*id->member_count+1);
 							id->members[id->member_count] = element_color;
 							id->member_count++;
 						} else {
@@ -522,19 +622,25 @@ void loadRule(const char* filepath) {
 	fclose(f);
 }
 
-void updateRegion(struct region* region, int x, int y, int width, int height) {
-	region->num_unique_members = 0;
-	for(int i = x, col = 0; i < x + width; i++)
-		for(int j = y, col = get(i,j); j < y + height; j++, col = get(i,j))
-			if(!isUIntMemberOf(col, region->unique_members, region->num_unique_members))
-				region->unique_members[region->num_unique_members++] = col;
-}
-
 void updateRegions() {
-	updateRegion(&quadrants[0], 0, 			0, 			WIDTH / 2, HEIGHT / 2);
-	updateRegion(&quadrants[1], WIDTH / 2, 	0, 			WIDTH / 2, HEIGHT / 2);
-	updateRegion(&quadrants[2], 0, 			HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
-	updateRegion(&quadrants[3], WIDTH / 2, 	HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
+	for(int i = 0; i < 4; i++) {
+		quadrants[i].num_unique_members = 0;
+		for(int j = 0; j < 4; j++)
+			quad_quadrants[i*4+j].num_unique_members = 0;
+	}
+
+	for(int i = 0; i < WIDTH; i++) {
+		for(int j = 0; j < HEIGHT; j++) {
+			int col = get(i, j);
+			struct region* quadrant = quadrants + (2*i/WIDTH) + 2*(2*j/HEIGHT);
+			if(!isUIntMemberOf(col, quadrant->unique_members, quadrant->num_unique_members))
+				quadrant->unique_members[quadrant->num_unique_members++] = col;
+			struct region* quad_quadrant = quad_quadrants + (4*i/WIDTH) + 4*(4*j/HEIGHT);
+			if(!isUIntMemberOf(col, quad_quadrant->unique_members, quad_quadrant->num_unique_members))
+				quad_quadrant->unique_members[quad_quadrant->num_unique_members++] = col;
+		}
+	}
+
 }
 
 int main(int argc, char* argv[]) {
@@ -547,14 +653,26 @@ int main(int argc, char* argv[]) {
 	if((w = SDL_CreateWindow("Sand", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH*WINDOW_SCALE, HEIGHT*WINDOW_SCALE, SDL_WINDOW_OPENGL))==NULL)
 		return 1;
 	window_surface = SDL_GetWindowSurface(w);
+	SDL_Renderer *renderer = SDL_CreateRenderer(w, -1, SDL_RENDERER_ACCELERATED);
+	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 	surf = SDL_CreateRGBSurface(0, WIDTH, HEIGHT, 32, 0, 0, 0, 0);
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, 0);
+	SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
+	SDL_Rect screenRect;
+	screenRect.x = 0; screenRect.y = 0; screenRect.w = WIDTH*WINDOW_SCALE; screenRect.h = HEIGHT*WINDOW_SCALE;
 
 	// Set up quadrants and quadquadrants
 	quadrants = (struct region*)malloc(sizeof(struct region)*4);
+	quad_quadrants = (struct region*)malloc(sizeof(struct region)*16);
 	for(int i = 0; i < 4; i++) {
 		quadrants[i].num_unique_members = 1;
 		quadrants[i].unique_members = (uint32_t*)malloc(sizeof(uint32_t)*(WIDTH/2)*(HEIGHT/2));
 		quadrants[i].unique_members[0] = AIR; // We always start with AIR everywhere
+		for(int j = 0; j < 4; j++) {
+			quad_quadrants[i*4+j].num_unique_members = 1;
+			quad_quadrants[i*4+j].unique_members = (uint32_t*)malloc(sizeof(uint32_t)*(WIDTH/4)*(HEIGHT/4));
+			quad_quadrants[i*4+j].unique_members[0] = AIR; // We always start with AIR everywhere
+		}
 	}
 
 	
@@ -685,8 +803,16 @@ int main(int argc, char* argv[]) {
 
 		updateRegions();
 		
-		SDL_BlitScaled(surf, NULL, window_surface, NULL);
-		SDL_UpdateWindowSurface(w);
+
+		SDL_UpdateTexture(texture, &screenRect, surf->pixels, surf->pitch);
+		SDL_RenderClear(renderer);
+		SDL_RenderCopy(renderer, texture, NULL, NULL);
+		SDL_Rect preview;
+		preview.x = floor(mouseX+1-paint_size)*WINDOW_SCALE; preview.w = floor(mouseX + paint_size)*WINDOW_SCALE-preview.x;
+		preview.y = floor(mouseY+1-paint_size)*WINDOW_SCALE; preview.h = floor(mouseY + paint_size)*WINDOW_SCALE-preview.y;
+		SDL_SetRenderDrawColor(renderer, fmin(((SELECTED_ELEMENT & 0x00ff0000)>>16)+16, 255), fmin(((SELECTED_ELEMENT & 0x0000ff00)>>8)+16,255), fmin((SELECTED_ELEMENT & 0x000000ff)+16,255), 128);
+		SDL_RenderFillRect(renderer, &preview);
+		SDL_RenderPresent(renderer);
 	}
 	
 	
