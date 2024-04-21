@@ -25,6 +25,7 @@ int relX, relY;
 #define ITERATIONS 4
 #define STEPPING 2
 #define MAX_RULES 256
+#define FRAME_RULES 64
 
 #define COL(r,g,b) ((uint32_t)(r<<16)+(uint32_t)(g<<8)+(uint32_t)(b)+(uint32_t)(255	<<24))
 
@@ -83,6 +84,7 @@ struct rule {
 	float chance;
 }* rules;
 int n_rules;
+int frame_index = 0;
 
 uint32_t binds[255];
 
@@ -784,15 +786,15 @@ int main(int argc, char* argv[]) {
 			int xstart = -4 + (step%STEPPING);
 			for(int j = ystart; j > -5; j-=STEPPING)
 				for(int i = ((step%2)==0?xstart:(WIDTH-xstart)); i < WIDTH+5 && i > -5; i+=((step%2)==0?1:-1)*STEPPING)
-					for(int r = 0; r < n_rules; r++) {
-						if(rules[rule_list[r]].replace[2][3].refX == -2 && i == 1 && j == 1)
+					for(int r = frame_index; r < frame_index + FRAME_RULES; r++) {
+						if(rules[rule_list[r % n_rules]].replace[2][3].refX == -2 && i == 1 && j == 1)
 							get(i, j);
-						if(matches(rules[rule_list[r]], i, j)) {
-							enforce(rules[rule_list[r]], i, j);
+						if(matches(rules[rule_list[r % n_rules]], i, j)) {
+							enforce(rules[rule_list[r % n_rules]], i, j);
 						}
 					}
-			int shuffle_a = rand() % n_rules;
-			int shuffle_b = rand() % n_rules;
+			int shuffle_a = (rand() % FRAME_RULES + frame_index) % n_rules;
+			int shuffle_b = (rand() % FRAME_RULES + frame_index) % n_rules;
 			int shuffle_z = rule_list[shuffle_a];
 			rule_list[shuffle_a] = rule_list[shuffle_b];
 			rule_list[shuffle_b] = shuffle_z;
@@ -800,6 +802,8 @@ int main(int argc, char* argv[]) {
 			if(step>=STEPPING*STEPPING)
 				step = 0;
 		}
+		frame_index += FRAME_RULES;
+		frame_index %= n_rules;
 
 		updateRegions();
 		
